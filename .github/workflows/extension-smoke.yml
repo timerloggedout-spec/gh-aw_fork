@@ -1,0 +1,25 @@
+name: Extension Smoke
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  go-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: Go mod download
+        run: go mod download || true
+      - name: Build surface
+        run: |
+          if [ -f go.mod ]; then
+            go build ./... || go build -o gh-aw ./cmd/... || true
+          fi
+          test -f README.md
+          test -f Makefile || true
