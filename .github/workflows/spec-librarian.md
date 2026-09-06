@@ -28,7 +28,6 @@ imports:
     - automation
     title-prefix: "[spec-librarian] "
 - shared/go-source-analysis.md
-- shared/otlp.md
 safe-outputs:
   create-issue:
     assignees: copilot
