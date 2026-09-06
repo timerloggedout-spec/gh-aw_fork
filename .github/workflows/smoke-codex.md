@@ -48,8 +48,6 @@ tools:
   comment-memory: true
   github:
     mode: gh-proxy
-  playwright:
-    mode: mcp
   edit:
   bash:
     - "*"
@@ -109,7 +107,7 @@ sandbox:
 2. **Serena MCP Testing**: 
    - Use the Serena MCP server tool `activate_project` to initialize the workspace at `${{ github.workspace }}` and verify it succeeds (do NOT use bash to run go commands)
    - After initialization, use the `find_symbol` tool to search for symbols and verify that at least 3 symbols are found in the results
-3. **Playwright MCP Testing**: Use the Playwright MCP `browser_navigate` tool to navigate to https://github.com, then use `browser_snapshot` to verify the page title contains "GitHub".
+3. **Playwright CLI Testing**: Use `playwright-cli` from bash to navigate to https://github.com, then use `playwright-cli snapshot` to verify the page title contains "GitHub". The built-in Playwright MCP mode is no longer supported by gh-aw.
 4. **Web Fetch Testing**: Use the web-fetch MCP tool to fetch https://github.com and verify the response contains "GitHub" (do NOT use bash or playwright for this test - use the web-fetch MCP tool directly)
 5. **File Writing Testing**: Create a test file `/tmp/gh-aw/agent/smoke-test-codex-${{ github.run_id }}.txt` with content "Smoke test passed for Codex at $(date)" (create the directory if it doesn't exist)
 6. **Bash Tool Testing**: Execute bash commands to verify file creation was successful (use `cat` to read the file back)
