@@ -57,7 +57,7 @@ jobs:
           retention-days: 14
 
       - name: Commit generated locks when an authorized workflow token is configured
-        if: ${{ success() && secrets.GH_AW_WORKFLOW_TOKEN != '' }}
+        if: ${{ success() && env.GH_AW_WORKFLOW_TOKEN != '' }}
         env:
           GH_AW_WORKFLOW_TOKEN: ${{ secrets.GH_AW_WORKFLOW_TOKEN }}
         run: |
@@ -73,7 +73,9 @@ jobs:
           git push "https://x-access-token:${GH_AW_WORKFLOW_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
 
       - name: Report lock commit mode
-        if: ${{ success() && secrets.GH_AW_WORKFLOW_TOKEN == '' }}
+        if: ${{ success() && env.GH_AW_WORKFLOW_TOKEN == '' }}
+        env:
+          GH_AW_WORKFLOW_TOKEN: ${{ secrets.GH_AW_WORKFLOW_TOKEN }}
         run: |
           echo 'Compilation succeeded. Generated locks were uploaded as an artifact.'
           echo 'Automatic lock commits require GH_AW_WORKFLOW_TOKEN with workflow-write authorization.'
