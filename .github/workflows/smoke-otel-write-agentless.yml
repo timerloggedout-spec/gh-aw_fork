@@ -1,0 +1,97 @@
+name: Smoke OTEL Write (agentless)
+# Lane B — data-first. No LLM. No Copilot AIC. Actions minutes only.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 */2 * *"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  otlp-write:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report OTLP config (no secrets leaked)
+        env:
+          GRAFANA_EP: ${{ secrets.GH_AW_OTEL_GRAFANA_ENDPOINT }}
+          GRAFANA_AUTH: ${{ secrets.GH_AW_OTEL_GRAFANA_AUTHORIZATION }}
+          SENTRY_EP: ${{ secrets.GH_AW_OTEL_SENTRY_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          echo "=== OTLP write smoke (agentless) ==="
+          echo "run_id=${GITHUB_RUN_ID}"
+          echo "GRAFANA_ENDPOINT_set=$([ -n "${GRAFANA_EP:-}" ] && echo yes || echo no)"
+          echo "GRAFANA_AUTH_set=$([ -n "${GRAFANA_AUTH:-}" ] && echo yes || echo no)"
+          echo "SENTRY_ENDPOINT_set=$([ -n "${SENTRY_EP:-}" ] && echo yes || echo no)"
+          if [ -n "${GRAFANA_EP:-}" ]; then
+            host=$(printf '%s' "$GRAFANA_EP" | sed -E 's#https?://([^/]+).*#\1#')
+            echo "grafana_host=$host"
+          fi
+
+      - name: POST synthetic OTLP span to Grafana
+        env:
+          GRAFANA_EP: ${{ secrets.GH_AW_OTEL_GRAFANA_ENDPOINT }}
+          GRAFANA_AUTH: ${{ secrets.GH_AW_OTEL_GRAFANA_AUTHORIZATION }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GRAFANA_EP:-}" ] || [ -z "${GRAFANA_AUTH:-}" ]; then
+            echo "Grafana OTLP secrets missing — opt-in telemetry not configured"
+            exit 0
+          fi
+          endpoint="${GRAFANA_EP%/}"
+          case "$endpoint" in
+            */v1/traces) url="$endpoint" ;;
+            */otlp) url="$endpoint/v1/traces" ;;
+            *) url="$endpoint/v1/traces" ;;
+          esac
+          now_ns=$(date +%s%N)
+          start_ns=$((now_ns - 1000000000))
+          tid=$(openssl rand -hex 16)
+          sid=$(openssl rand -hex 8)
+          body=$(cat <<EOF
+          {
+            "resourceSpans": [{
+              "resource": {
+                "attributes": [
+                  {"key":"service.name","value":{"stringValue":"gh-aw.smoke-otel-agentless"}},
+                  {"key":"github.repository","value":{"stringValue":"${GITHUB_REPOSITORY}"}},
+                  {"key":"github.run_id","value":{"stringValue":"${GITHUB_RUN_ID}"}}
+                ]
+              },
+              "scopeSpans": [{
+                "scope": {"name":"smoke-otel-agentless","version":"1"},
+                "spans": [{
+                  "traceId":"$tid",
+                  "spanId":"$sid",
+                  "name":"gh-aw.smoke-otel-agentless.write",
+                  "kind":1,
+                  "startTimeUnixNano":"$start_ns",
+                  "endTimeUnixNano":"$now_ns",
+                  "status":{"code":1},
+                  "attributes": [
+                    {"key":"gh-aw.smoke","value":{"stringValue":"agentless"}},
+                    {"key":"github.run_id","value":{"stringValue":"${GITHUB_RUN_ID}"}}
+                  ]
+                }]
+              }]
+            }]
+          }
+          EOF
+          )
+          echo "POST $url"
+          code=$(curl -sS -o /tmp/otlp_resp.txt -w "%{http_code}" \
+            -X POST "$url" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: ${GRAFANA_AUTH}" \
+            --data "$body" || true)
+          echo "http_status=$code"
+          head -c 500 /tmp/otlp_resp.txt || true
+          echo
+          case "$code" in
+            200|202|204) echo "WRITE_OK grafana" ;;
+            401|403) echo "WRITE_AUTH_FAIL grafana"; exit 1 ;;
+            *) echo "WRITE_UNEXPECTED_$code"; exit 1 ;;
+          esac
