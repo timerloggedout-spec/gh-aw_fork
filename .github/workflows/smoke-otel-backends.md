@@ -16,7 +16,7 @@ on:
   status-comment: true
 permissions:
   contents: read
-  issues: write
+  issues: read
   pull-requests: read
   actions: read
 name: Smoke OTEL
