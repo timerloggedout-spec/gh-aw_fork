@@ -16,14 +16,14 @@ observability:
 ---
 
 <!--
-## Required secrets
+## Optional observability secrets
 
-Consumers of this shared import may provision the following secrets to enable OTLP export:
+Consumers may provision these repository Actions secrets to enable OTLP export:
 
 - `GH_AW_OTEL_SENTRY_ENDPOINT`
 - `GH_AW_OTEL_SENTRY_AUTHORIZATION`
 - `GH_AW_OTEL_GRAFANA_ENDPOINT`
 - `GH_AW_OTEL_GRAFANA_AUTHORIZATION`
 
-`if-missing: ignore` makes the shared import safe for repositories where observability is intentionally disabled; configured endpoints continue to export normally.
+`if-missing: ignore` keeps this shared import safe when observability is intentionally disabled. Configured destinations continue to export normally; telemetry configuration must not be treated as a prerequisite for the core workflow/provider path.
 -->
