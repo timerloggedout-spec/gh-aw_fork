@@ -15,15 +15,34 @@ observability:
           Authorization: ${{ secrets.GH_AW_OTEL_GRAFANA_AUTHORIZATION }}
 ---
 
-<!--
-## Optional observability secrets
+# OTLP observability
 
-Consumers may provision these repository Actions secrets to enable OTLP export:
+This shared import is intentionally **optional**. `if-missing: ignore` allows the core workflow/provider path to run when telemetry is not configured.
 
-- `GH_AW_OTEL_SENTRY_ENDPOINT`
-- `GH_AW_OTEL_SENTRY_AUTHORIZATION`
-- `GH_AW_OTEL_GRAFANA_ENDPOINT`
-- `GH_AW_OTEL_GRAFANA_AUTHORIZATION`
+## Grafana Cloud
 
-`if-missing: ignore` keeps this shared import safe when observability is intentionally disabled. Configured destinations continue to export normally; telemetry configuration must not be treated as a prerequisite for the core workflow/provider path.
--->
+Grafana Cloud provides the OTLP destination and the access-policy token; the **Secrets Management → Secure Values** page is a separate Grafana secret store and is not where the GitHub Actions OTLP credential is created.
+
+For direct OTLP export, use the values shown by the Grafana Cloud **OpenTelemetry** card:
+
+1. Copy the **OTLP endpoint URL**. Store it in the GitHub Actions repository secret `GH_AW_OTEL_GRAFANA_ENDPOINT`.
+2. Create a Grafana Cloud **Access Policy** with the write scopes required by the telemetry being exported (`metrics:write`, `traces:write`, and `logs:write` as applicable), then create its token. Grafana shows the token once and it normally starts with `glc_`.
+3. Copy the **OTLP Instance ID** from the OpenTelemetry card. It is the Basic-auth username for OTLP and is distinct from merely using the stack hostname.
+4. Build the Basic-auth value from `OTLP_INSTANCE_ID:TOKEN`, base64-encode that exact string, and store the resulting header value as `Basic <base64-value>` in `GH_AW_OTEL_GRAFANA_AUTHORIZATION`.
+
+Do **not** use the stack URL (for example `https://<stack>.grafana.net`) as `GH_AW_OTEL_GRAFANA_ENDPOINT` unless Grafana's OpenTelemetry card explicitly gives that URL as the OTLP endpoint. The OTLP endpoint normally looks like `https://otlp-gateway-<region>.grafana.net/otlp`.
+
+### GitHub secret mapping
+
+| GitHub Actions secret | Value source |
+| --- | --- |
+| `GH_AW_OTEL_GRAFANA_ENDPOINT` | Grafana Cloud OpenTelemetry card → **OTLP endpoint URL** |
+| `GH_AW_OTEL_GRAFANA_AUTHORIZATION` | `Basic <base64(OTLP instance ID:Grafana Cloud access-policy token)>` |
+| `GH_AW_OTEL_SENTRY_ENDPOINT` | Sentry OTLP endpoint |
+| `GH_AW_OTEL_SENTRY_AUTHORIZATION` | Sentry OTLP authorization header |
+
+Keep the token only in GitHub Actions Secrets (or an approved external secret-management path); never commit it to the repository or paste it into workflow source.
+
+## Collector mode
+
+A Grafana Alloy/OpenTelemetry Collector can sit between GH-AW and Grafana Cloud. In that model the workflow sends OTLP to the collector, while the collector owns the Grafana Cloud credentials. This is useful when credentials, retries, routing, or additional observability backends need to be centralized.
