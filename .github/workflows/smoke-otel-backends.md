@@ -18,11 +18,11 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
+  copilot-requests: write
 name: Smoke OTEL
 engine:
-  id: claude
-  bare: true
-model: claude-sonnet-4-6
+  id: codex
+model: copilot/mai-code-1-flash-picker
 strict: true
 tools:
   bash: true
@@ -70,9 +70,10 @@ Step 1 is local-only: it checks env injection, the local JSONL mirror, and span 
 
 ## Required Secrets
 
+Engine auth uses `permissions.copilot-requests: write` (no `COPILOT_GITHUB_TOKEN` secret).
+
 This workflow expects these secrets to be present:
 
-- `ANTHROPIC_API_KEY` (engine auth — pure Claude; no `COPILOT_GITHUB_TOKEN`)
 - `GH_AW_OTEL_SENTRY_ENDPOINT`
 - `GH_AW_OTEL_SENTRY_AUTHORIZATION`
 - `GH_AW_OTEL_GRAFANA_ENDPOINT`
