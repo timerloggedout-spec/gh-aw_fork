@@ -1,6 +1,6 @@
 name: Smoke OTEL Write (agentless)
 # Lane B SSOT — data-first. No LLM. No Copilot. Actions minutes only.
-# Proven: run 35161680890 → http_status=200 WRITE_OK grafana
+# Emits CLIENT span edges for service-graph metrics generator.
 on:
   workflow_dispatch:
   schedule:
@@ -19,147 +19,112 @@ jobs:
         env:
           GRAFANA_EP: ${{ secrets.GH_AW_OTEL_GRAFANA_ENDPOINT }}
           GRAFANA_AUTH: ${{ secrets.GH_AW_OTEL_GRAFANA_AUTHORIZATION }}
-          SENTRY_EP: ${{ secrets.GH_AW_OTEL_SENTRY_ENDPOINT }}
         run: |
           set -euo pipefail
-          echo "=== OTLP write smoke (agentless) ==="
+          echo "=== OTLP write smoke (agentless + service-graph edges) ==="
           echo "run_id=${GITHUB_RUN_ID}"
-          echo "GRAFANA_ENDPOINT_set=$([ -n \"${GRAFANA_EP:-}\" ] && echo yes || echo no)"
-          echo "GRAFANA_AUTH_set=$([ -n \"${GRAFANA_AUTH:-}\" ] && echo yes || echo no)"
-          echo "SENTRY_ENDPOINT_set=$([ -n \"${SENTRY_EP:-}\" ] && echo yes || echo no)"
-          if [ -n \"${GRAFANA_EP:-}\" ]; then
-            host=$(printf '%s' \"$GRAFANA_EP\" | sed -E 's#https?://([^/]+).*#\\1#')
-            echo "grafana_host=$host"
-          fi
+          echo "GRAFANA_ENDPOINT_set=$([ -n "${GRAFANA_EP:-}" ] && echo yes || echo no)"
+          echo "GRAFANA_AUTH_set=$([ -n "${GRAFANA_AUTH:-}" ] && echo yes || echo no)"
 
-      - name: POST synthetic OTLP span to Grafana
+      - name: POST multi-span OTLP trace (INTERNAL + CLIENT)
         id: write
         env:
           GRAFANA_EP: ${{ secrets.GH_AW_OTEL_GRAFANA_ENDPOINT }}
           GRAFANA_AUTH: ${{ secrets.GH_AW_OTEL_GRAFANA_AUTHORIZATION }}
         run: |
           set -euo pipefail
-          if [ -z \"${GRAFANA_EP:-}\" ] || [ -z \"${GRAFANA_AUTH:-}\" ]; then
-            echo "Grafana OTLP secrets missing — opt-in telemetry not configured"
-            echo "write_ok=false" >> \"$GITHUB_OUTPUT\"
+          if [ -z "${GRAFANA_EP:-}" ] || [ -z "${GRAFANA_AUTH:-}" ]; then
+            echo "Grafana OTLP secrets missing"
+            echo "write_ok=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          endpoint=\"${GRAFANA_EP%/}\"
-          case \"$endpoint\" in
-            */v1/traces) url=\"$endpoint\" ;;
-            */otlp) url=\"$endpoint/v1/traces\" ;;
-            *) url=\"$endpoint/v1/traces\" ;;
+          endpoint="${GRAFANA_EP%/}"
+          case "$endpoint" in
+            */v1/traces) url="$endpoint" ;;
+            */otlp) url="$endpoint/v1/traces" ;;
+            *) url="$endpoint/v1/traces" ;;
           esac
+          host=$(printf '%s' "$endpoint" | sed -E 's#https?://([^/]+).*#\1#')
           now_ns=$(date +%s%N)
           start_ns=$((now_ns - 1000000000))
+          mid_ns=$((now_ns - 200000000))
           tid=$(openssl rand -hex 16)
-          sid=$(openssl rand -hex 8)
-          echo \"trace_id=$tid\" >> \"$GITHUB_OUTPUT\"
-          body=$(cat <<'EOB'
-          {
-            \"resourceSpans\": [{
-              \"resource\": {
-                \"attributes\": [
-                  {\"key\":\"service.name\",\"value\":{\"stringValue\":\"gh-aw.smoke-otel-agentless\"}},
-                  {\"key\":\"github.repository\",\"value\":{\"stringValue\":\"REPO_PLACEHOLDER\"}},
-                  {\"key\":\"github.run_id\",\"value\":{\"stringValue\":\"RUN_PLACEHOLDER\"}}
-                ]
-              },
-              \"scopeSpans\": [{
-                \"scope\": {\"name\":\"smoke-otel-agentless\",\"version\":\"1\"},
-                \"spans\": [{
-                  \"traceId\":\"TID_PLACEHOLDER\",
-                  \"spanId\":\"SID_PLACEHOLDER\",
-                  \"name\":\"gh-aw.smoke-otel-agentless.write\",
-                  \"kind\":1,
-                  \"startTimeUnixNano\":\"START_PLACEHOLDER\",
-                  \"endTimeUnixNano\":\"END_PLACEHOLDER\",
-                  \"status\":{\"code\":1},
-                  \"attributes\": [
-                    {\"key\":\"gh-aw.smoke\",\"value\":{\"stringValue\":\"agentless\"}},
-                    {\"key\":\"github.run_id\",\"value\":{\"stringValue\":\"RUN_PLACEHOLDER\"}}
+          root_sid=$(openssl rand -hex 8)
+          client_sid=$(openssl rand -hex 8)
+          echo "trace_id=$tid" >> "$GITHUB_OUTPUT"
+          # kind: 1=INTERNAL, 3=CLIENT — service graph needs CLIENT (+ SERVER peer)
+          body=$(jq -n \
+            --arg tid "$tid" \
+            --arg root "$root_sid" \
+            --arg child "$client_sid" \
+            --arg start "$start_ns" \
+            --arg mid "$mid_ns" \
+            --arg end "$now_ns" \
+            --arg repo "${GITHUB_REPOSITORY}" \
+            --arg run "${GITHUB_RUN_ID}" \
+            --arg host "$host" \
+            '{
+              resourceSpans: [{
+                resource: { attributes: [
+                  {key:"service.name", value:{stringValue:"gh-aw.smoke-otel-agentless"}},
+                  {key:"github.repository", value:{stringValue:$repo}},
+                  {key:"github.run_id", value:{stringValue:$run}},
+                  {key:"deployment.environment", value:{stringValue:"production"}}
+                ]},
+                scopeSpans: [{
+                  scope: {name:"smoke-otel-agentless", version:"2"},
+                  spans: [
+                    {
+                      traceId: $tid, spanId: $root,
+                      name: "gh-aw.smoke-otel-agentless.run",
+                      kind: 1,
+                      startTimeUnixNano: $start, endTimeUnixNano: $end,
+                      status: {code: 1},
+                      attributes: [
+                        {key:"gh-aw.smoke", value:{stringValue:"agentless"}},
+                        {key:"github.run_id", value:{stringValue:$run}}
+                      ]
+                    },
+                    {
+                      traceId: $tid, spanId: $child, parentSpanId: $root,
+                      name: "POST /v1/traces",
+                      kind: 3,
+                      startTimeUnixNano: $mid, endTimeUnixNano: $end,
+                      status: {code: 1},
+                      attributes: [
+                        {key:"peer.service", value:{stringValue:"grafana-otlp-gateway"}},
+                        {key:"server.address", value:{stringValue:$host}},
+                        {key:"http.request.method", value:{stringValue:"POST"}},
+                        {key:"url.full", value:{stringValue:("https://"+$host+"/otlp/v1/traces")}},
+                        {key:"http.response.status_code", value:{intValue:200}}
+                      ]
+                    }
                   ]
                 }]
               }]
-            }]
-          }
-          EOB
-          )
-          body=${body//REPO_PLACEHOLDER/${GITHUB_REPOSITORY}}
-          body=${body//RUN_PLACEHOLDER/${GITHUB_RUN_ID}}
-          body=${body//TID_PLACEHOLDER/${tid}}
-          body=${body//SID_PLACEHOLDER/${sid}}
-          body=${body//START_PLACEHOLDER/${start_ns}}
-          body=${body//END_PLACEHOLDER/${now_ns}}
-          echo \"POST $url\"
-          code=$(curl -sS -o /tmp/otlp_resp.txt -w \"%{http_code}\" \\
-            -X POST \"$url\" \\
-            -H \"Content-Type: application/json\" \\
-            -H \"Authorization: ${GRAFANA_AUTH}\" \\
-            --data \"$body\" || true)
-          echo \"http_status=$code\"
-          head -c 500 /tmp/otlp_resp.txt || true
+            }')
+          echo "POST $url (multi-span CLIENT edge)"
+          code=$(curl -sS -o /tmp/otlp_resp.txt -w "%{http_code}" \
+            -X POST "$url" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: ${GRAFANA_AUTH}" \
+            --data "$body" || true)
+          echo "http_status=$code"
+          head -c 300 /tmp/otlp_resp.txt || true
           echo
-          case \"$code\" in
+          case "$code" in
             200|202|204)
-              echo \"WRITE_OK grafana\"
-              echo \"write_ok=true\" >> \"$GITHUB_OUTPUT\"
+              echo "WRITE_OK grafana multi-span"
+              echo "write_ok=true" >> "$GITHUB_OUTPUT"
               ;;
             401|403)
-              echo \"WRITE_AUTH_FAIL grafana\"
-              echo \"write_ok=false\" >> \"$GITHUB_OUTPUT\"
+              echo "WRITE_AUTH_FAIL"
+              echo "write_ok=false" >> "$GITHUB_OUTPUT"
               exit 1
               ;;
             *)
-              echo \"WRITE_UNEXPECTED_$code\"
-              echo \"write_ok=false\" >> \"$GITHUB_OUTPUT\"
+              echo "WRITE_UNEXPECTED_$code"
+              echo "write_ok=false" >> "$GITHUB_OUTPUT"
               exit 1
               ;;
           esac
-
-      - name: Query Tempo (read path — optional SA token)
-        if: steps.write.outputs.write_ok == 'true'
-        env:
-          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
-          GRAFANA_SA: ${{ secrets.GRAFANA_SERVICE_ACCOUNT_TOKEN }}
-          TRACE_ID: ${{ steps.write.outputs.trace_id }}
-        run: |
-          set -euo pipefail
-          if [ -z \"${GRAFANA_URL:-}\" ] || [ -z \"${GRAFANA_SA:-}\" ]; then
-            echo \"READ_SKIP — set GRAFANA_URL + GRAFANA_SERVICE_ACCOUNT_TOKEN for API query\"
-            echo \"Write already proven. Use UI now:\"
-            echo \"  https://pinkkinkajou2544.grafana.net/explore\"
-            echo \"  Tempo → TraceQL:\"
-            echo \"  { resource.service.name = \\\"gh-aw.smoke-otel-agentless\\\" }\"
-            exit 0
-          fi
-          base=\"${GRAFANA_URL%/}\"
-          ds=$(curl -sS -H \"Authorization: Bearer ${GRAFANA_SA}\" \\
-            \"${base}/api/datasources\" | jq -r '[.[] | select(.type==\"tempo\")] | .[0].uid // empty')
-          if [ -z \"$ds\" ]; then
-            echo \"READ_INCONCLUSIVE — no Tempo datasource via SA\"
-            exit 0
-          fi
-          echo \"tempo_uid=$ds\"
-          if [ -n \"${TRACE_ID:-}\" ]; then
-            code=$(curl -sS -o /tmp/tempo_trace.json -w \"%{http_code}\" \\
-              -H \"Authorization: Bearer ${GRAFANA_SA}\" \\
-              \"${base}/api/datasources/proxy/uid/${ds}/api/traces/${TRACE_ID}\" || true)
-            echo \"trace_get_status=$code\"
-            if [ \"$code\" = \"200\" ]; then
-              echo \"READ_OK trace ${TRACE_ID}\"
-              head -c 400 /tmp/tempo_trace.json
-              echo
-              exit 0
-            fi
-            echo \"trace lag — search fallback\"
-          fi
-          code=$(curl -sS -o /tmp/tempo_search.json -w \"%{http_code}\" \\
-            -H \"Authorization: Bearer ${GRAFANA_SA}\" \\
-            --get \"${base}/api/datasources/proxy/uid/${ds}/api/search\" \\
-            --data-urlencode \"tags=service.name=gh-aw.smoke-otel-agentless\" \\
-            --data-urlencode \"limit=5\" || true)
-          echo \"search_status=$code\"
-          head -c 800 /tmp/tempo_search.json || true
-          echo
-          [ \"$code\" = \"200\" ] && echo \"READ_OK search\" || echo \"READ_INCONCLUSIVE — UI Explore still works\"
