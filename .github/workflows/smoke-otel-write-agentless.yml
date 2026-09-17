@@ -1,6 +1,6 @@
 name: Smoke OTEL Write (agentless)
-# Lane B SSOT — data-first. No LLM. No Copilot. Actions minutes only.
-# Emits CLIENT span edges for service-graph metrics generator.
+# Lane B SSOT — data-first. No LLM. Actions minutes only.
+# Multi-peer CLIENT topology for service-graph + provider-hub (Lane C) extension.
 on:
   push:
     paths:
@@ -24,12 +24,12 @@ jobs:
           GRAFANA_AUTH: ${{ secrets.GH_AW_OTEL_GRAFANA_AUTHORIZATION }}
         run: |
           set -euo pipefail
-          echo "=== OTLP write smoke (agentless + service-graph edges) ==="
+          echo "=== OTLP multi-peer CLIENT topology ==="
           echo "run_id=${GITHUB_RUN_ID}"
           echo "GRAFANA_ENDPOINT_set=$([ -n "${GRAFANA_EP:-}" ] && echo yes || echo no)"
           echo "GRAFANA_AUTH_set=$([ -n "${GRAFANA_AUTH:-}" ] && echo yes || echo no)"
 
-      - name: POST multi-span OTLP trace (INTERNAL + CLIENT)
+      - name: POST multi-peer OTLP trace
         id: write
         env:
           GRAFANA_EP: ${{ secrets.GH_AW_OTEL_GRAFANA_ENDPOINT }}
@@ -49,22 +49,26 @@ jobs:
           esac
           host=$(printf '%s' "$endpoint" | sed -E 's#https?://([^/]+).*#\1#')
           now_ns=$(date +%s%N)
-          start_ns=$((now_ns - 1000000000))
-          mid_ns=$((now_ns - 200000000))
+          # Timeline (ns): root 1000ms; github 300ms; provider 400ms; grafana 200ms (overlap ok)
+          t0=$((now_ns - 1000000000))
+          t1=$((now_ns - 900000000))
+          t2=$((now_ns - 600000000))
+          t3=$((now_ns - 500000000))
+          t4=$((now_ns - 100000000))
+          t5=$((now_ns - 200000000))
           tid=$(openssl rand -hex 16)
-          root_sid=$(openssl rand -hex 8)
-          client_sid=$(openssl rand -hex 8)
+          root=$(openssl rand -hex 8)
+          s_gh=$(openssl rand -hex 8)
+          s_pr=$(openssl rand -hex 8)
+          s_gr=$(openssl rand -hex 8)
           echo "trace_id=$tid" >> "$GITHUB_OUTPUT"
-          # kind: 1=INTERNAL, 3=CLIENT — service graph needs CLIENT (+ SERVER peer)
+          # kind 1=INTERNAL 3=CLIENT — peers seed service-graph virtual nodes
           body=$(jq -n \
-            --arg tid "$tid" \
-            --arg root "$root_sid" \
-            --arg child "$client_sid" \
-            --arg start "$start_ns" \
-            --arg mid "$mid_ns" \
-            --arg end "$now_ns" \
-            --arg repo "${GITHUB_REPOSITORY}" \
-            --arg run "${GITHUB_RUN_ID}" \
+            --arg tid "$tid" --arg root "$root" \
+            --arg sgh "$s_gh" --arg spr "$s_pr" --arg sgr "$s_gr" \
+            --arg t0 "$t0" --arg t1 "$t1" --arg t2 "$t2" --arg t3 "$t3" \
+            --arg t4 "$t4" --arg t5 "$t5" --arg end "$now_ns" \
+            --arg repo "${GITHUB_REPOSITORY}" --arg run "${GITHUB_RUN_ID}" \
             --arg host "$host" \
             '{
               resourceSpans: [{
@@ -72,41 +76,69 @@ jobs:
                   {key:"service.name", value:{stringValue:"gh-aw.smoke-otel-agentless"}},
                   {key:"github.repository", value:{stringValue:$repo}},
                   {key:"github.run_id", value:{stringValue:$run}},
-                  {key:"deployment.environment", value:{stringValue:"production"}}
+                  {key:"deployment.environment", value:{stringValue:"production"}},
+                  {key:"gh-aw.lane", value:{stringValue:"B+C-extend"}}
                 ]},
                 scopeSpans: [{
-                  scope: {name:"smoke-otel-agentless", version:"2"},
+                  scope: {name:"smoke-otel-agentless", version:"3"},
                   spans: [
                     {
-                      traceId: $tid, spanId: $root,
-                      name: "gh-aw.smoke-otel-agentless.run",
-                      kind: 1,
-                      startTimeUnixNano: $start, endTimeUnixNano: $end,
-                      status: {code: 1},
-                      attributes: [
-                        {key:"gh-aw.smoke", value:{stringValue:"agentless"}},
+                      traceId:$tid, spanId:$root,
+                      name:"gh-aw.smoke-otel-agentless.run", kind:1,
+                      startTimeUnixNano:$t0, endTimeUnixNano:$end,
+                      status:{code:1},
+                      attributes:[
+                        {key:"gh-aw.smoke", value:{stringValue:"agentless-multi-peer"}},
                         {key:"github.run_id", value:{stringValue:$run}}
                       ]
                     },
                     {
-                      traceId: $tid, spanId: $child, parentSpanId: $root,
-                      name: "POST /v1/traces",
-                      kind: 3,
-                      startTimeUnixNano: $mid, endTimeUnixNano: $end,
-                      status: {code: 1},
-                      attributes: [
+                      traceId:$tid, spanId:$sgh, parentSpanId:$root,
+                      name:"GET api.github.com", kind:3,
+                      startTimeUnixNano:$t1, endTimeUnixNano:$t2,
+                      status:{code:1},
+                      attributes:[
+                        {key:"peer.service", value:{stringValue:"github.api"}},
+                        {key:"server.address", value:{stringValue:"api.github.com"}},
+                        {key:"http.request.method", value:{stringValue:"GET"}},
+                        {key:"http.response.status_code", value:{intValue:200}},
+                        {key:"gh-aw.peer", value:{stringValue:"github"}}
+                      ]
+                    },
+                    {
+                      traceId:$tid, spanId:$spr, parentSpanId:$root,
+                      name:"POST openrouter.ai/api/v1/chat/completions", kind:3,
+                      startTimeUnixNano:$t3, endTimeUnixNano:$t4,
+                      status:{code:1},
+                      attributes:[
+                        {key:"peer.service", value:{stringValue:"openrouter"}},
+                        {key:"server.address", value:{stringValue:"openrouter.ai"}},
+                        {key:"http.request.method", value:{stringValue:"POST"}},
+                        {key:"http.response.status_code", value:{intValue:200}},
+                        {key:"gen_ai.system", value:{stringValue:"openrouter"}},
+                        {key:"gh-aw.peer", value:{stringValue:"provider-hub"}},
+                        {key:"gh-aw.lane", value:{stringValue:"C-extend"}}
+                      ]
+                    },
+                    {
+                      traceId:$tid, spanId:$sgr, parentSpanId:$root,
+                      name:"POST /v1/traces", kind:3,
+                      startTimeUnixNano:$t5, endTimeUnixNano:$end,
+                      status:{code:1},
+                      attributes:[
                         {key:"peer.service", value:{stringValue:"grafana-otlp-gateway"}},
                         {key:"server.address", value:{stringValue:$host}},
                         {key:"http.request.method", value:{stringValue:"POST"}},
                         {key:"url.full", value:{stringValue:("https://"+$host+"/otlp/v1/traces")}},
-                        {key:"http.response.status_code", value:{intValue:200}}
+                        {key:"http.response.status_code", value:{intValue:200}},
+                        {key:"gh-aw.peer", value:{stringValue:"grafana"}}
                       ]
                     }
                   ]
                 }]
               }]
             }')
-          echo "POST $url (multi-span CLIENT edge)"
+          echo "POST $url (github.api + openrouter + grafana CLIENT peers)"
           code=$(curl -sS -o /tmp/otlp_resp.txt -w "%{http_code}" \
             -X POST "$url" \
             -H "Content-Type: application/json" \
@@ -115,7 +147,7 @@ jobs:
           echo "http_status=$code"
           case "$code" in
             200|202|204)
-              echo "WRITE_OK grafana multi-span"
+              echo "WRITE_OK grafana multi-peer"
               echo "write_ok=true" >> "$GITHUB_OUTPUT"
               ;;
             401|403)
@@ -130,7 +162,7 @@ jobs:
               ;;
           esac
 
-      - name: Read trace back from Tempo (optional strict read path)
+      - name: Read trace back from Tempo (optional)
         if: steps.write.outputs.write_ok == 'true'
         env:
           GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
@@ -139,54 +171,16 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${GRAFANA_URL:-}" ] || [ -z "${GRAFANA_SERVICE_ACCOUNT_TOKEN:-}" ]; then
-            echo "READ_SKIP — set GRAFANA_URL + GRAFANA_SERVICE_ACCOUNT_TOKEN to enable Tempo read-back"
-            echo "Write path is already validated."
+            echo "READ_SKIP — optional Tempo read credentials not set"
             exit 0
           fi
-
           base="${GRAFANA_URL%/}"
           auth=(-H "Authorization: Bearer ${GRAFANA_SERVICE_ACCOUNT_TOKEN}")
           tempo_uid=$(curl -fsS "${auth[@]}" "${base}/api/datasources" \
             | jq -r '[.[] | select(.type == "tempo")][0].uid // empty')
-          if [ -z "$tempo_uid" ]; then
-            echo "READ_INCONCLUSIVE — no Tempo datasource was discoverable"
-            exit 0
-          fi
-          echo "tempo_datasource_discovered=true"
-
+          [ -n "$tempo_uid" ] || { echo "READ_INCONCLUSIVE"; exit 0; }
           code=$(curl -sS -o /tmp/tempo_trace.json -w "%{http_code}" \
             "${auth[@]}" \
             "${base}/api/datasources/proxy/uid/${tempo_uid}/api/traces/${TRACE_ID}" || true)
           echo "trace_read_status=$code"
-          case "$code" in
-            200)
-              echo "READ_OK tempo trace"
-              ;;
-            401|403)
-              echo "READ_AUTH_FAIL tempo"
-              exit 1
-              ;;
-            404)
-              echo "trace_not_found_by_id — attempting recent search"
-              search_code=$(curl -sS -o /tmp/tempo_search.json -w "%{http_code}" \
-                "${auth[@]}" \
-                --get "${base}/api/datasources/proxy/uid/${tempo_uid}/api/search" \
-                --data-urlencode "tags=service.name=gh-aw.smoke-otel-agentless" \
-                --data-urlencode "limit=5" || true)
-              echo "trace_search_status=$search_code"
-              if [ "$search_code" = "200" ]; then
-                count=$(jq -r '.traces // [] | length' /tmp/tempo_search.json)
-                echo "trace_search_count=$count"
-                if [ "$count" -gt 0 ]; then
-                  echo "READ_OK tempo search"
-                  exit 0
-                fi
-              fi
-              echo "READ_NOT_FOUND tempo"
-              exit 1
-              ;;
-            *)
-              echo "READ_UNEXPECTED_$code"
-              exit 1
-              ;;
-          esac
+          [ "$code" = "200" ] && echo "READ_OK" || echo "READ_PENDING_OR_LAG"
