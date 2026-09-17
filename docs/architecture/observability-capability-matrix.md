@@ -17,6 +17,7 @@ This repository is a reusable GitHub Agentic Workflows (GH-AW) template. Observa
 | Investigation | Trace/log correlation | GitHub run → telemetry identifiers | TraceQL + log query |
 | Automation | Alerting | Rules derived from stable signals | Alert evaluation |
 | Diagnosis | Sift / incident workflows | Evidence-first investigation | Linked investigation |
+| Agent Observability | LLM/agent telemetry | Opt-in Grafana Agent Observability tools | Agent metrics/traces/evaluations |
 
 ## Grafana MCP collaboration contract
 
@@ -29,6 +30,8 @@ An external MCP operator (for example, Grok with `GRAFANA_MCP`) owns Grafana-sid
 3. Produce dashboard, alert, and investigation proposals with exact resource UIDs.
 4. Create or patch Grafana resources only when explicitly authorized by the operator and when the proposed mutation is reversible.
 5. Return evidence using the handoff format below.
+6. Use Tempo's proxied MCP tools when enabled, allowing TraceQL search, trace retrieval, attribute discovery, and TraceQL metrics through the Grafana MCP surface.
+7. Use Agent Observability tools when the Grafana stack exposes them and the use case requires LLM/agent evaluation, experiments, guards, or test-suite telemetry.
 
 ### MCP operator must not
 
@@ -36,6 +39,57 @@ An external MCP operator (for example, Grok with `GRAFANA_MCP`) owns Grafana-sid
 - Treat dashboard presence as proof of telemetry ingestion.
 - Treat a successful OTLP HTTP response as proof that a trace is queryable.
 - Change GH-AW workflow execution semantics without a GitHub-side review/commit.
+- enable broad write/admin capabilities merely to obtain read-only observability evidence.
+
+## Recommended MCP operating profiles
+
+### Discovery / forensics profile
+
+Prefer read/query capabilities first:
+
+```text
+search
+ datasource
+ prometheus
+ loki
+ dashboard
+ folder
+ alerting (read)
+ sift (read)
+ tempo / proxied Tempo
+ navigation
+ docs
+```
+
+Use this profile for inventory, RCA, correlation, and evidence gathering.
+
+### Controlled automation profile
+
+Add write capabilities only after the target resource and mutation are explicit:
+
+```text
+ dashboard write
+ folder create
+ alert rule write
+ annotation write
+ incident write
+ sift investigation creation
+```
+
+Use least-privilege RBAC scopes and preserve reversible changes. Grafana MCP supports disabling writes globally and selectively enabling tool categories; this should be the default safety posture for a new integration.
+
+### Agent-observability profile
+
+If the stack has Agent Observability enabled, expose its tools only for tasks involving:
+
+- LLM conversation/generation telemetry
+- evaluator and evaluation-rule management
+- guards
+- saved conversations and collections
+- experiments
+- test suites
+
+Keep this capability separate from core GH-AW execution telemetry so a missing Agent Observability feature does not break ordinary workflow observability.
 
 ## Evidence ladder
 
@@ -64,6 +118,8 @@ SERVICE_GRAPH: <observed edges/status>
 TRACEQL: <validated query patterns>
 LOGQL: <validated query patterns>
 RBAC: <minimum scopes required>
+MCP_TOOLS: <enabled categories/tools>
+AGENT_OBSERVABILITY: <available/disabled>
 ACTIONS: <proposed or completed mutations>
 EVIDENCE: <links/identifiers without secrets>
 ```
@@ -91,13 +147,15 @@ EVIDENCE: <links/identifiers without secrets>
 - Add Grafana dashboards for execution health, latency, errors, retries, and telemetry delivery.
 - Add alert rules for sustained workflow/provider failures and telemetry degradation.
 - Add GitHub ↔ Grafana deep links where stable identifiers permit them.
+- Inventory and selectively enable Grafana MCP's Tempo and Agent Observability capabilities.
 
 ### P2
 
 - Add provider/model usage and cost signals where available.
 - Add reusable dashboard/alert provisioning for consumers of this template.
 - Add richer incident/Sift automation behind explicit authorization.
+- Evaluate Grafana Assistant / agent-to-agent integrations where available to consumers.
 
 ## Consumer-template rule
 
-All capabilities in this document are designed as opt-in template features. A consumer must be able to use GH-AW without Grafana, Tempo, Sift, or any external observability provider configured.
+All capabilities in this document are designed as opt-in template features. A consumer must be able to use GH-AW without Grafana, Tempo, Sift, Agent Observability, or any external observability provider configured.
