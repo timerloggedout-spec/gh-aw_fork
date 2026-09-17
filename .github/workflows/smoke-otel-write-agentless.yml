@@ -1,13 +1,14 @@
 name: Smoke OTEL Write (agentless)
 # Lane B SSOT — data-first. No LLM. Actions minutes only.
 # Multi-peer CLIENT topology for service-graph + provider-hub (Lane C) extension.
+# Cadence: hourly densify per Investigation 40376d29 (was every 2 days).
 on:
   push:
     paths:
       - ".github/workflows/smoke-otel-write-agentless.yml"
   workflow_dispatch:
   schedule:
-    - cron: "0 6 */2 * *"
+    - cron: "17 * * * *"
 
 permissions:
   contents: read
@@ -49,7 +50,6 @@ jobs:
           esac
           host=$(printf '%s' "$endpoint" | sed -E 's#https?://([^/]+).*#\1#')
           now_ns=$(date +%s%N)
-          # Timeline (ns): root 1000ms; github 300ms; provider 400ms; grafana 200ms (overlap ok)
           t0=$((now_ns - 1000000000))
           t1=$((now_ns - 900000000))
           t2=$((now_ns - 600000000))
@@ -62,7 +62,6 @@ jobs:
           s_pr=$(openssl rand -hex 8)
           s_gr=$(openssl rand -hex 8)
           echo "trace_id=$tid" >> "$GITHUB_OUTPUT"
-          # kind 1=INTERNAL 3=CLIENT — peers seed service-graph virtual nodes
           body=$(jq -n \
             --arg tid "$tid" --arg root "$root" \
             --arg sgh "$s_gh" --arg spr "$s_pr" --arg sgr "$s_gr" \
