@@ -43,6 +43,37 @@ Do **not** use the stack URL (for example `https://<stack>.grafana.net`) as `GH_
 
 Keep the token only in GitHub Actions Secrets (or an approved external secret-management path); never commit it to the repository or paste it into workflow source.
 
+## Reading traces (why Explore says "No data")
+
+Traces live in **Tempo**, not Prometheus. Default Explore often opens Prometheus → TraceQL returns empty.
+
+1. Open Explore → select datasource **`grafanacloud-pinkkinkajou2544-traces`** (uid `grafanacloud-traces`, type Tempo).
+2. TraceQL:
+
+```
+{ resource.service.name =~ ".*gh-aw.*" }
+```
+
+3. Time range: **Last 24 hours** (or wider).
+4. Dashboard: https://pinkkinkajou2544.grafana.net/d/gh-aw-ops/gh-aw-operations — Service variable = `.*gh-aw.*`.
+
+Metrics derived from traces (`traces_spanmetrics_*`, `traces_service_graph_*`) are in Prometheus (`grafanacloud-prom`). Service Graph UI needs CLIENT spans + metrics generation ON (already enabled for this stack).
+
+## Multi-peer CLIENT contract (Lane B + Lane C EXTEND)
+
+Agentless smoke SSOT: `.github/workflows/smoke-otel-write-agentless.yml` emits:
+
+| Span | kind | peer.service |
+| --- | --- | --- |
+| root run | INTERNAL | — |
+| GET api.github.com | CLIENT | github.api |
+| POST openrouter…/chat/completions | CLIENT | openrouter (`gen_ai.system=openrouter`, `gh-aw.lane=C-extend`) |
+| POST /v1/traces | CLIENT | grafana-otlp-gateway |
+
+**Lane C (provider hub) EXTENDS this stream** — free routes should emit the same CLIENT attrs into Tempo, not a parallel observability stack.
+
+Native engine CLIENT for real GitHub/provider I/O remains the densify path beyond hourly smoke.
+
 ## Collector mode
 
 A Grafana Alloy/OpenTelemetry Collector can sit between GH-AW and Grafana Cloud. In that model the workflow sends OTLP to the collector, while the collector owns the Grafana Cloud credentials. This is useful when credentials, retries, routing, or additional observability backends need to be centralized.
