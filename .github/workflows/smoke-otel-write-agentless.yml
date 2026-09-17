@@ -2,6 +2,9 @@ name: Smoke OTEL Write (agentless)
 # Lane B SSOT — data-first. No LLM. No Copilot. Actions minutes only.
 # Emits CLIENT span edges for service-graph metrics generator.
 on:
+  push:
+    paths:
+      - ".github/workflows/smoke-otel-write-agentless.yml"
   workflow_dispatch:
   schedule:
     - cron: "0 6 */2 * *"
