@@ -110,8 +110,6 @@ jobs:
             -H "Authorization: ${GRAFANA_AUTH}" \
             --data "$body" || true)
           echo "http_status=$code"
-          head -c 300 /tmp/otlp_resp.txt || true
-          echo
           case "$code" in
             200|202|204)
               echo "WRITE_OK grafana multi-span"
@@ -125,6 +123,67 @@ jobs:
             *)
               echo "WRITE_UNEXPECTED_$code"
               echo "write_ok=false" >> "$GITHUB_OUTPUT"
+              exit 1
+              ;;
+          esac
+
+      - name: Read trace back from Tempo (optional strict read path)
+        if: steps.write.outputs.write_ok == 'true'
+        env:
+          GRAFANA_URL: ${{ secrets.GRAFANA_URL }}
+          GRAFANA_SERVICE_ACCOUNT_TOKEN: ${{ secrets.GRAFANA_SERVICE_ACCOUNT_TOKEN }}
+          TRACE_ID: ${{ steps.write.outputs.trace_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GRAFANA_URL:-}" ] || [ -z "${GRAFANA_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+            echo "READ_SKIP — set GRAFANA_URL + GRAFANA_SERVICE_ACCOUNT_TOKEN to enable Tempo read-back"
+            echo "Write path is already validated."
+            exit 0
+          fi
+
+          base="${GRAFANA_URL%/}"
+          auth=(-H "Authorization: Bearer ${GRAFANA_SERVICE_ACCOUNT_TOKEN}")
+          tempo_uid=$(curl -fsS "${auth[@]}" "${base}/api/datasources" \
+            | jq -r '[.[] | select(.type == "tempo")][0].uid // empty')
+          if [ -z "$tempo_uid" ]; then
+            echo "READ_INCONCLUSIVE — no Tempo datasource was discoverable"
+            exit 0
+          fi
+          echo "tempo_datasource_discovered=true"
+
+          code=$(curl -sS -o /tmp/tempo_trace.json -w "%{http_code}" \
+            "${auth[@]}" \
+            "${base}/api/datasources/proxy/uid/${tempo_uid}/api/traces/${TRACE_ID}" || true)
+          echo "trace_read_status=$code"
+          case "$code" in
+            200)
+              echo "READ_OK tempo trace"
+              ;;
+            401|403)
+              echo "READ_AUTH_FAIL tempo"
+              exit 1
+              ;;
+            404)
+              echo "trace_not_found_by_id — attempting recent search"
+              search_code=$(curl -sS -o /tmp/tempo_search.json -w "%{http_code}" \
+                "${auth[@]}" \
+                --get "${base}/api/datasources/proxy/uid/${tempo_uid}/api/search" \
+                --data-urlencode "tags=service.name=gh-aw.smoke-otel-agentless" \
+                --data-urlencode "limit=5" || true)
+              echo "trace_search_status=$search_code"
+              if [ "$search_code" = "200" ]; then
+                count=$(jq -r '.traces // [] | length' /tmp/tempo_search.json)
+                echo "trace_search_count=$count"
+                if [ "$count" -gt 0 ]; then
+                  echo "READ_OK tempo search"
+                  exit 0
+                fi
+              fi
+              echo "READ_NOT_FOUND tempo"
+              exit 1
+              ;;
+            *)
+              echo "READ_UNEXPECTED_$code"
               exit 1
               ;;
           esac
