@@ -40,6 +40,7 @@
 - Keep WebWrapper adapters replaceable and independently testable.
 - Separate provider concerns from observability concerns; an AI provider must not own the telemetry backend contract.
 - Prefer capability discovery/configuration over hard-coded provider branches in core workflows.
+- **EXTEND Lane B Tempo stream** — free routes emit CLIENT spans with `peer.service` / `gen_ai.*` into the same OTLP path; do not replace B.
 
 ### Lane D — Copilot isolation (P1)
 
@@ -77,6 +78,28 @@
 ## Current implementation note
 
 The shared OTLP import uses `if-missing: ignore`, making observability opt-in for repositories that do not configure the four documented endpoint/authorization secrets. Keep this invariant while expanding the backend suite.
+
+### BIUDL densify evidence (2026-09-18)
+
+Lane B multi-peer CLIENT path is **operational**, not aspirational:
+
+| Signal | Evidence |
+| --- | --- |
+| Write path | Hourly `smoke-otel-write-agentless` schedule; run #19 success |
+| Tempo | Multi-span traces for `gh-aw.smoke-otel-agentless` (CLIENT peers) |
+| Spanmetrics | `GET api.github.com` · `POST openrouter…` · `POST /v1/traces` (~14–16 / 48h) |
+| Service graph servers | `github.api` · `openrouter` · `grafana-otlp-gateway` live |
+| Alert | `gh-aw multi-peer CLIENT smoke missing` (`afyhsc0c23ocgb`) state **normal/ok** |
+| Real traffic | Additional spanmetrics for `gh-aw.agent.agent`, `chat copilot/*`, `mcp-gateway` |
+| Dashboard | `gh-aw-ops` in folder `gh-aw` |
+
+**Still open (Lane B/C):**
+
+1. Grafana **contact points** empty → alert evaluates but does not notify until one is added.
+2. **Native CLIENT** in gh-aw engine binary (code search found no OTEL emit surface in fork index).
+3. Lane C free routes emit the same CLIENT attrs into this Tempo stream (contract documented; code pending).
+
+Explore false “No data”: use Tempo datasource `grafanacloud-traces`, not Prometheus. See `.github/workflows/shared/otlp.md`.
 
 ## Exit criteria
 
