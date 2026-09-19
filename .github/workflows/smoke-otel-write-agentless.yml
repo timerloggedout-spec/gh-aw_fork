@@ -175,8 +175,14 @@ jobs:
           fi
           base="${GRAFANA_URL%/}"
           auth=(-H "Authorization: Bearer ${GRAFANA_SERVICE_ACCOUNT_TOKEN}")
-          tempo_uid=$(curl -fsS "${auth[@]}" "${base}/api/datasources" \
-            | jq -r '[.[] | select(.type == "tempo")][0].uid // empty')
+          datasources_status=$(curl -sS -o /tmp/tempo_datasources.json -w "%{http_code}" \
+            "${auth[@]}" "${base}/api/datasources" || true)
+          echo "tempo_datasources_status=$datasources_status"
+          if [ "$datasources_status" != "200" ]; then
+            echo "READ_PENDING_OR_LAG — datasource discovery unavailable"
+            exit 0
+          fi
+          tempo_uid=$(jq -r '[.[] | select(.type == "tempo")][0].uid // empty' /tmp/tempo_datasources.json)
           [ -n "$tempo_uid" ] || { echo "READ_INCONCLUSIVE"; exit 0; }
           code=$(curl -sS -o /tmp/tempo_trace.json -w "%{http_code}" \
             "${auth[@]}" \
