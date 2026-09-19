@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: compile-agentic-workflows
@@ -56,10 +56,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Commit generated locks when an authorized workflow token is configured
-        if: ${{ success() && env.GH_AW_WORKFLOW_TOKEN != '' }}
+      - name: Commit generated locks
+        if: ${{ success() }}
         env:
           GH_AW_WORKFLOW_TOKEN: ${{ secrets.GH_AW_WORKFLOW_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if git diff --quiet -- .github/workflows; then
@@ -70,12 +71,6 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add .github/workflows
           git commit -m 'chore(gh-aw): compile agentic workflow locks'
-          git push "https://x-access-token:${GH_AW_WORKFLOW_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
-
-      - name: Report lock commit mode
-        if: ${{ success() && env.GH_AW_WORKFLOW_TOKEN == '' }}
-        env:
-          GH_AW_WORKFLOW_TOKEN: ${{ secrets.GH_AW_WORKFLOW_TOKEN }}
-        run: |
-          echo 'Compilation succeeded. Generated locks were uploaded as an artifact.'
-          echo 'Automatic lock commits require GH_AW_WORKFLOW_TOKEN with workflow-write authorization.'
+          token="${GH_AW_WORKFLOW_TOKEN:-${GH_TOKEN}}"
+          test -n "${token}" || { echo '::error::No workflow commit token available'; exit 1; }
+          git push "https://x-access-token:${token}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
