@@ -21,7 +21,7 @@ experiments:
     metric: effective_tokens
     secondary_metrics: [run_duration_minutes, scenarios_tested, output_quality_score]
     guardrail_metrics:
-      - name: issue_created
+      - name: discussion_created
         threshold: "==1"
       - name: scenarios_analyzed
         threshold: ">=3"
@@ -46,11 +46,11 @@ tools:
   agentic-workflows:
   cache-memory: true
 safe-outputs:
-  create-issue:
+  create-discussion:
     title-prefix: "Agent Persona Exploration - "
-    labels: ["agent-research"]
+    category: "General"
     max: 1
-    close-older-issues: true
+    close-older-discussions: true
     expires: false
   threat-detection:
     engine: copilot
@@ -192,11 +192,11 @@ Review all captured responses and identify:
 
 ## Phase 5: Document and Publish Findings (1 minute)
 
-**MANDATORY OUTPUT**: Regardless of how many phases completed successfully, you MUST call either the `create issue` or the `noop` safe-output tool before finishing. Failing to call a safe-output tool is the most common cause of workflow failures.
+**MANDATORY OUTPUT**: Regardless of how many phases completed successfully, you MUST call either the `create discussion` or the `noop` safe-output tool before finishing. Failing to call a safe-output tool is the most common cause of workflow failures.
 
-Create a GitHub issue with a **concise** summary report. Use the `create issue` safe-output to publish your findings. Even if only 1-2 scenarios were tested, create the issue with partial results. Treat invocation failures as a standard partial-results outcome and explicitly mark scoring as unavailable where applicable.
+Create a GitHub discussion with a **concise** summary report. Use the `create discussion` safe-output to publish your findings. Even if only 1-2 scenarios were tested, create the issue with partial results. Treat invocation failures as a standard partial-results outcome and explicitly mark scoring as unavailable where applicable.
 
-**Issue title**: "Agent Persona Exploration - [DATE]" (e.g., "Agent Persona Exploration - 2024-01-16")
+**Discussion title**: "Agent Persona Exploration - [DATE]" (e.g., "Agent Persona Exploration - 2024-01-16")
 
 **Issue content structure**:
 
@@ -297,7 +297,7 @@ Example:
 ## Success Criteria
 
 Your effectiveness is measured by:
-- **Safe output**: ALWAYS call either `create issue` or `noop` — this is the most critical requirement
+- **Safe output**: ALWAYS call either `create discussion` or `noop` — this is the most critical requirement
 - **Efficiency**: Complete analysis within token budget (timeout: 180 minutes, concise outputs)
 - **Quality over quantity**: Test 3-4 representative scenarios thoroughly rather than many scenarios superficially
 - **Actionable insights**: Provide 3-5 concrete, implementable recommendations
@@ -307,7 +307,7 @@ Your effectiveness is measured by:
 Execute all phases systematically and maintain an objective, research-focused approach to understanding the agentic-workflows custom agent's capabilities and limitations.
 
 **CRITICAL**: You MUST call a safe-output tool before finishing. Choose one:
-1. Call `create issue` to publish findings (preferred — even partial results are valuable)
+1. Call `create discussion` to publish findings (preferred — even partial results are valuable)
 2. Call `noop` if you were completely unable to gather any data
 
 ```json
