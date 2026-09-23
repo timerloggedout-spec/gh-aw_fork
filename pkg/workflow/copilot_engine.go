@@ -80,7 +80,15 @@ func (e *CopilotEngine) ResolveLLMProvider(workflowData *WorkflowData) LLMProvid
 func (e *CopilotEngine) GetRequiredSecretNames(workflowData *WorkflowData) []string {
 	copilotLog.Print("Collecting required secrets for Copilot engine")
 	provider := e.ResolveLLMProvider(workflowData)
-	secrets := append([]string{}, llmProviderSecretNames(provider)...)
+	secrets := []string{}
+	// Organization-billed Copilot uses the per-run GitHub Actions token when
+	// copilot-requests: write is granted. In that mode activation must not require
+	// COPILOT_GITHUB_TOKEN; the agent job already receives github.token directly.
+	if provider != LLMProviderGitHub || !hasCopilotRequestsWritePermission(workflowData) {
+		secrets = append(secrets, llmProviderSecretNames(provider)...)
+	} else {
+		copilotLog.Print("Skipping COPILOT_GITHUB_TOKEN requirement: copilot-requests write permission is configured")
+	}
 	// Always include the BYOK provider keys so that secrets assigned to them via engine.env
 	// pass through the strict-mode validator and FilterEnvForSecrets.
 	secrets = append(secrets,
