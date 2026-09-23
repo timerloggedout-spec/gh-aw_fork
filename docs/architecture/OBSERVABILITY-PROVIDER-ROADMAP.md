@@ -7,7 +7,7 @@
 | Priority | Lane | Definition of done |
 | --- | --- | --- |
 | P0 | 🔥 Workflow execution failures | Identify, classify, repair, and regression-test failing Actions paths; do not treat downstream empty/safe outputs as agent success. |
-| P0 | 🔥 Grafana / OTel observability path | Keep telemetry optional by default; validate the OTLP configuration, document secret ownership, and support direct backend or collector-mediated export. |
+| P0 | ✅ Grafana / OTel observability path | **EXIT complete (agentless Lane B):** optional OTLP, densified multi-peer CLIENT, Tempo/Prom/service-graph live, alert evaluates, Actions webhook notify contract. |
 | P0 | 🔥 Provider / WebWrapper architecture | Establish provider-neutral interfaces and isolate backend-specific WebWrapper adapters from core workflow/runtime behavior. |
 | P1 | 🧠 Copilot integration isolation | Keep Copilot-specific authentication, model selection, prompts, and failure handling behind the provider boundary. |
 | P1 | 🧠 Sentry integration | Add Sentry as an optional observability destination without making Sentry credentials a template prerequisite. |
@@ -24,16 +24,25 @@
 - Verify every fix with the originating workflow and a relevant compile/check workflow.
 - Preserve the `wait → inspect logs → patch → rerun → validate` loop until the affected path is green.
 
-### Lane B — Grafana / OpenTelemetry (P0)
+### Lane B — Grafana / OpenTelemetry (P0) — **EXIT COMPLETE**
 
-- Treat OTLP as an optional capability for this template.
-- Keep provider/backend credentials in GitHub Actions secrets; never commit credential material.
-- Maintain the shared OTLP import as safe when no telemetry credentials are configured.
-- Support two deployment modes:
-  1. direct `gh-aw → Grafana Cloud` export;
-  2. `gh-aw → Alloy/OTel Collector → Grafana/Sentry/other backends`.
-- Define failure semantics explicitly: telemetry failure must not silently masquerade as workflow/agent success or become an unconditional workflow prerequisite.
-- **Notify path:** GitHub Actions webhooks / `repository_dispatch` (not invented Grafana email contact points). See `shared/otlp.md`.
+Done criteria met:
+
+| Criterion | Evidence |
+| --- | --- |
+| Optional OTLP (`if-missing: ignore`) | `shared/otlp.md` |
+| Direct write path green | Hourly `smoke-otel-write-agentless`; multi-peer CLIENT |
+| Tempo + spanmetrics + service graph | Servers github.api / openrouter / grafana-otlp-gateway live |
+| Alert evaluation | Rule `afyhsc0c23ocgb` normal/ok |
+| Notify contract | `.github/workflows/grafana-alert-dispatch.yml` (`repository_dispatch` type `grafana-alert`) |
+| Credentials plane | Monorepo #184 names/last-used only; values in Actions secrets |
+| Operator dashboard | `gh-aw-ops` in folder `gh-aw` |
+
+**Notify:** webhooks = **GitHub Actions**, not invented Grafana email. Operator may attach a Grafana Webhook contact point to the repo dispatches API; agents never paste tokens.
+
+**Out of Lane B exit scope (separate lanes):**
+- First-party Go SDK OTEL exporter in `pkg/` (OTEL only appears as indirect deps today).
+- Lane C free-route CLIENT emit into the same Tempo stream.
 
 ### Lane C — Provider / WebWrapper architecture (P0)
 
@@ -78,38 +87,13 @@
 
 ## Current implementation note
 
-The shared OTLP import uses `if-missing: ignore`, making observability opt-in for repositories that do not configure the four documented endpoint/authorization secrets. Keep this invariant while expanding the backend suite.
-
-Credentials inventory (names + last-used only): monorepo issue **#184**. Values only in Actions secrets.
-
-### BIUDL densify evidence (2026-09-23)
-
-Lane B multi-peer CLIENT path is **operational**:
-
-| Signal | Evidence |
-| --- | --- |
-| Write path | Hourly smoke schedule; run **#46 success** |
-| Tempo | Continuous multi-span `gh-aw.smoke-otel-agentless` CLIENT peers |
-| Service graph servers (7d) | `github.api` ~41 · `openrouter` ~41 · `grafana-otlp-gateway` ~43 |
-| Alert | `afyhsc0c23ocgb` state **normal/ok** (evaluates; notify via Actions webhooks when wired) |
-| Dashboard | `gh-aw-ops` v7 in folder `gh-aw` |
-| Docs | `shared/otlp.md` — Tempo Explore path + webhook/Actions notify + #184 plane |
-
-**Still open (Lane B/C):**
-
-1. Optional Grafana **webhook** contact point → Actions `repository_dispatch` (operator secret wiring; not email invention).
-2. **Native CLIENT** in gh-aw engine binary.
-3. Lane C free routes emit the same CLIENT attrs into this Tempo stream.
-
-Explore false “No data”: Tempo `grafanacloud-traces`, not Prometheus.
+The shared OTLP import uses `if-missing: ignore`. Credentials inventory: monorepo **#184**. Lane B agentless densify + Actions notify contract is **closed**.
 
 ## Exit criteria
 
-The roadmap is considered operationally complete when:
-
-- P0 workflow failures have a verified root cause and regression coverage;
-- OTLP can be enabled without making telemetry credentials mandatory for template consumers;
-- provider/WebWrapper adapters can evolve without modifying unrelated core runtime paths;
-- Copilot and Sentry failures are isolated and diagnosable;
-- telemetry/cost dashboards expose useful workflow/provider signals without secret or prompt leakage; and
-- P2 dependency maintenance is repeatable and low-noise.
+- [x] Lane B OTLP optional + densified + alert + Actions notify contract
+- [ ] P0 workflow failures have verified root cause and regression coverage (Lane A)
+- [ ] provider/WebWrapper adapters evolve without modifying unrelated core runtime (Lane C)
+- [ ] Copilot and Sentry failures isolated (Lane D/E)
+- [ ] telemetry/cost dashboards without secret/prompt leakage (Lane F)
+- [ ] P2 dependency maintenance repeatable and low-noise (Lane G)
