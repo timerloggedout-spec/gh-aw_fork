@@ -33,6 +33,7 @@
   1. direct `gh-aw → Grafana Cloud` export;
   2. `gh-aw → Alloy/OTel Collector → Grafana/Sentry/other backends`.
 - Define failure semantics explicitly: telemetry failure must not silently masquerade as workflow/agent success or become an unconditional workflow prerequisite.
+- **Notify path:** GitHub Actions webhooks / `repository_dispatch` (not invented Grafana email contact points). See `shared/otlp.md`.
 
 ### Lane C — Provider / WebWrapper architecture (P0)
 
@@ -79,27 +80,28 @@
 
 The shared OTLP import uses `if-missing: ignore`, making observability opt-in for repositories that do not configure the four documented endpoint/authorization secrets. Keep this invariant while expanding the backend suite.
 
-### BIUDL densify evidence (2026-09-18)
+Credentials inventory (names + last-used only): monorepo issue **#184**. Values only in Actions secrets.
 
-Lane B multi-peer CLIENT path is **operational**, not aspirational:
+### BIUDL densify evidence (2026-09-23)
+
+Lane B multi-peer CLIENT path is **operational**:
 
 | Signal | Evidence |
 | --- | --- |
-| Write path | Hourly `smoke-otel-write-agentless` schedule; run #19 success |
-| Tempo | Multi-span traces for `gh-aw.smoke-otel-agentless` (CLIENT peers) |
-| Spanmetrics | `GET api.github.com` · `POST openrouter…` · `POST /v1/traces` (~14–16 / 48h) |
-| Service graph servers | `github.api` · `openrouter` · `grafana-otlp-gateway` live |
-| Alert | `gh-aw multi-peer CLIENT smoke missing` (`afyhsc0c23ocgb`) state **normal/ok** |
-| Real traffic | Additional spanmetrics for `gh-aw.agent.agent`, `chat copilot/*`, `mcp-gateway` |
-| Dashboard | `gh-aw-ops` in folder `gh-aw` |
+| Write path | Hourly smoke schedule; run **#46 success** |
+| Tempo | Continuous multi-span `gh-aw.smoke-otel-agentless` CLIENT peers |
+| Service graph servers (7d) | `github.api` ~41 · `openrouter` ~41 · `grafana-otlp-gateway` ~43 |
+| Alert | `afyhsc0c23ocgb` state **normal/ok** (evaluates; notify via Actions webhooks when wired) |
+| Dashboard | `gh-aw-ops` v7 in folder `gh-aw` |
+| Docs | `shared/otlp.md` — Tempo Explore path + webhook/Actions notify + #184 plane |
 
 **Still open (Lane B/C):**
 
-1. Grafana **contact points** empty → alert evaluates but does not notify until one is added.
-2. **Native CLIENT** in gh-aw engine binary (code search found no OTEL emit surface in fork index).
-3. Lane C free routes emit the same CLIENT attrs into this Tempo stream (contract documented; code pending).
+1. Optional Grafana **webhook** contact point → Actions `repository_dispatch` (operator secret wiring; not email invention).
+2. **Native CLIENT** in gh-aw engine binary.
+3. Lane C free routes emit the same CLIENT attrs into this Tempo stream.
 
-Explore false “No data”: use Tempo datasource `grafanacloud-traces`, not Prometheus. See `.github/workflows/shared/otlp.md`.
+Explore false “No data”: Tempo `grafanacloud-traces`, not Prometheus.
 
 ## Exit criteria
 
