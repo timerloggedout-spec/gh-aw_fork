@@ -1,0 +1,74 @@
+name: Grafana Alert Dispatch
+# Lane B notify path — GitHub Actions webhooks, not Grafana email.
+# Grafana contact point type: Webhook
+# URL: https://api.github.com/repos/<owner>/<repo>/dispatches
+# Header: Authorization: Bearer <PAT with repo scope>
+# Body example (Grafana):
+#   {"event_type":"grafana-alert","client_payload":{"rule":"${title}","state":"${state}","message":"${message}"}}
+on:
+  repository_dispatch:
+    types: [grafana-alert]
+  workflow_dispatch:
+    inputs:
+      rule:
+        description: Alert rule title
+        required: false
+        default: manual-test
+      state:
+        description: firing|ok|normal
+        required: false
+        default: ok
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record alert payload
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RULE: ${{ github.event.client_payload.rule || inputs.rule }}
+          STATE: ${{ github.event.client_payload.state || inputs.state }}
+          MESSAGE: ${{ github.event.client_payload.message || '' }}
+          PAYLOAD_JSON: ${{ toJson(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          echo "event=$EVENT_NAME"
+          echo "rule=${RULE:-}"
+          echo "state=${STATE:-}"
+          echo "message=${MESSAGE:-}"
+          echo "payload=${PAYLOAD_JSON:-}"
+          # Non-secret evidence only — never echo tokens
+
+      - name: Open tracking issue when firing
+        if: ${{ (github.event.client_payload.state || inputs.state) == 'firing' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const rule = context.payload.client_payload?.rule || '${{ inputs.rule }}' || 'grafana-alert';
+            const message = context.payload.client_payload?.message || '';
+            const title = `[grafana-alert] ${rule}`;
+            const body = [
+              '## Grafana → Actions dispatch',
+              '',
+              `**rule:** ${rule}`,
+              `**state:** firing`,
+              '',
+              message ? message : '_no message_',
+              '',
+              `run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              '',
+              'Lane B notify path. Credentials plane: monorepo #184 (names only).',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['observability', 'grafana'],
+            });
