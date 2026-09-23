@@ -45,7 +45,7 @@ Do **not** use the stack URL (for example `https://<stack>.grafana.net`) as `GH_
 
 Keep the token only in GitHub Actions Secrets (or an approved external secret-management path); never commit it to the repository or paste it into workflow source.
 
-**Credentials plane:** inventory + last-used evidence lives on monorepo issue **#184**. Values live only in repo Settings → Secrets. Agents use `${{ secrets.* }}` or MCP connectors — never inline tokens.
+**Credentials plane:** inventory + last-used evidence lives on monorepo issue **#184**. Values live only in repo Settings → Secrets. Agents use GitHub Actions secret references or MCP connectors — never inline token values.
 
 ## Alerts and webhooks (GitHub Actions, not invented email)
 
