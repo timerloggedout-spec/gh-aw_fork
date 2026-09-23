@@ -40,8 +40,22 @@ Do **not** use the stack URL (for example `https://<stack>.grafana.net`) as `GH_
 | `GH_AW_OTEL_GRAFANA_AUTHORIZATION` | `Basic <base64(OTLP instance ID:Grafana Cloud access-policy token)>` |
 | `GH_AW_OTEL_SENTRY_ENDPOINT` | Sentry OTLP endpoint |
 | `GH_AW_OTEL_SENTRY_AUTHORIZATION` | Sentry OTLP authorization header |
+| `GRAFANA_URL` (optional) | Stack URL for Tempo read-back smoke step |
+| `GRAFANA_SERVICE_ACCOUNT_TOKEN` (optional) | SA token for Tempo API read-back |
 
 Keep the token only in GitHub Actions Secrets (or an approved external secret-management path); never commit it to the repository or paste it into workflow source.
+
+**Credentials plane:** inventory + last-used evidence lives on monorepo issue **#184**. Values live only in repo Settings → Secrets. Agents use `${{ secrets.* }}` or MCP connectors — never inline tokens.
+
+## Alerts and webhooks (GitHub Actions, not invented email)
+
+Grafana alert **evaluation** is live (rule `gh-aw multi-peer CLIENT smoke missing`).
+
+**Notify path for this template is GitHub Actions-oriented:**
+
+- Repository / org **webhooks** and `repository_dispatch` / workflow triggers — not a requirement to invent Grafana Cloud email contact points in agent sessions.
+- If Grafana must push outward: configure a Grafana **webhook contact point** that targets a GitHub Actions-compatible endpoint (or an intermediate that dispatches into Actions). That is operator UI + secret wiring; agents do not paste webhook secrets into issues.
+- Empty Grafana contact-point list is therefore **not** a write-path failure; smoke + Tempo + spanmetrics can be green while notify remains unconfigured.
 
 ## Reading traces (why Explore says "No data")
 
