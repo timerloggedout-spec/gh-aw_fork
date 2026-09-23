@@ -46,6 +46,33 @@ func TestCopilotEngine(t *testing.T) {
 	}
 }
 
+func TestCopilotEngineRequiredSecretsHonorsCopilotRequestsPermission(t *testing.T) {
+	engine := NewCopilotEngine()
+
+	withoutPermission := engine.GetRequiredSecretNames(&WorkflowData{
+		Permissions: "permissions:\n  contents: read",
+	})
+	if !containsString(withoutPermission, "COPILOT_GITHUB_TOKEN") {
+		t.Fatalf("Expected COPILOT_GITHUB_TOKEN without copilot-requests permission, got %v", withoutPermission)
+	}
+
+	withPermission := engine.GetRequiredSecretNames(&WorkflowData{
+		Permissions: "permissions:\n  contents: read\n  copilot-requests: write",
+	})
+	if containsString(withPermission, "COPILOT_GITHUB_TOKEN") {
+		t.Fatalf("COPILOT_GITHUB_TOKEN must not be required when copilot-requests: write is configured, got %v", withPermission)
+	}
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestCopilotEngineDefaultDetectionModel(t *testing.T) {
 	engine := NewCopilotEngine()
 
