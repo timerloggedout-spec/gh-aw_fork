@@ -11,6 +11,12 @@ on:
       - '.github/skills/**'
       - '.github/agents/**'
       - '.github/graders/**'
+      - 'actions/**'
+      - 'cmd/**'
+      - 'pkg/**'
+      - 'internal/**'
+      - 'go.mod'
+      - 'go.sum'
   workflow_dispatch:
 
 permissions:
@@ -25,28 +31,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Checkout workflow sources and imports
+      - name: Checkout workflow sources and compiler
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 1
-          sparse-checkout: |
-            .github/workflows
-            .github/aw.json
-            aw.json
-            .github/skills
-            .github/agents
-            .github/graders
 
-      - name: Install gh-aw
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build fork compiler
+        run: go build -ldflags '-s -w' -o gh-aw ./cmd/gh-aw
+
+      - name: Install fork compiler
+        run: gh extension install . --force
+
+      - name: Compile against fork runtime actions
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_AW_VERSION: v0.28.10
-        run: gh extension install "github/gh-aw@${GH_AW_VERSION}"
-
-      - name: Compile
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh aw compile
+        run: gh aw compile --action-mode action --actions-repo timerloggedout-spec/gh-aw_fork --action-tag main
 
       - name: Upload generated workflow locks
         if: always()
