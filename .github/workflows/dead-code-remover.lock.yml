@@ -1818,6 +1818,7 @@ jobs:
           bash "${RUNNER_TEMP}/gh-aw/actions/conclude_threat_detection.sh" /tmp/gh-aw/threat-detection/detection_result.json
 
   pre_activation:
+    if: github.event_name != 'schedule' || vars.ENABLE_UPSTREAM_SCHEDULES == 'true'
     runs-on: ubuntu-slim
     permissions:
       contents: read
