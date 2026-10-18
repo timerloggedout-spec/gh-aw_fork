@@ -2124,11 +2124,12 @@ jobs:
 
   pre_activation:
     if: >
+      (github.event_name != 'schedule' || vars.ENABLE_UPSTREAM_SCHEDULES == 'true') && (
       (fromJSON(github.event.inputs.aw_context || '{}').event_type == 'issues' || fromJSON(github.event.inputs.aw_context ||
       '{}').event_type == 'pull_request' || fromJSON(github.event.inputs.aw_context || '{}').event_type == 'discussion') &&
       (fromJSON(github.event.inputs.aw_context || '{}').trigger_label == 'dev') || !(fromJSON(github.event.inputs.aw_context ||
       '{}').event_type == 'issues' || fromJSON(github.event.inputs.aw_context || '{}').event_type == 'pull_request' ||
-      fromJSON(github.event.inputs.aw_context || '{}').event_type == 'discussion')
+      fromJSON(github.event.inputs.aw_context || '{}').event_type == 'discussion'))
     runs-on: ubuntu-slim
     permissions:
       contents: read

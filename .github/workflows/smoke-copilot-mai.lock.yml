@@ -1865,8 +1865,9 @@ jobs:
 
   pre_activation:
     if: >
+      (github.event_name != 'schedule' || vars.ENABLE_UPSTREAM_SCHEDULES == 'true') && (
       (fromJSON(github.event.inputs.aw_context || '{}').event_type == 'pull_request') && (fromJSON(github.event.inputs.aw_context ||
-      '{}').trigger_label == 'smoke') || !(fromJSON(github.event.inputs.aw_context || '{}').event_type == 'pull_request')
+      '{}').trigger_label == 'smoke') || !(fromJSON(github.event.inputs.aw_context || '{}').event_type == 'pull_request'))
     runs-on: ubuntu-slim
     permissions:
       contents: read

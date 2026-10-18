@@ -87,7 +87,7 @@ env:
 
 jobs:
   activation:
-    if: github.event_name != 'push' && fromJSON(github.event.inputs.aw_context || '{}').event_type != 'push'
+    if: "(github.event_name != 'schedule' || vars.ENABLE_UPSTREAM_SCHEDULES == 'true') && (github.event_name != 'push' && fromJSON(github.event.inputs.aw_context || '{}').event_type != 'push')"
     runs-on: ubuntu-slim
     permissions:
       actions: read
