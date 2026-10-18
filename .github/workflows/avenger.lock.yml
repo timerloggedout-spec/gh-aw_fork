@@ -1276,6 +1276,7 @@ jobs:
           if-no-files-found: ignore
 
   check_ci_status:
+    if: github.event_name != 'schedule' || vars.ENABLE_UPSTREAM_SCHEDULES == 'true'
     runs-on: ubuntu-latest
     permissions:
       actions: read
