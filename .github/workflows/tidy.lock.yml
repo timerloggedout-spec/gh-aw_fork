@@ -2156,6 +2156,7 @@ jobs:
           persist-credentials: false
 
   pre_activation:
+    if: github.event_name != 'schedule' || vars.ENABLE_UPSTREAM_SCHEDULES == 'true'
     runs-on: ubuntu-slim
     permissions:
       contents: read
